@@ -32,6 +32,31 @@ impl MainState {
     }
 }
 
+fn draw_wall(x1: f64, x2: f64, b1: f64, b2: f64, t1: f64, t2: f64, mb: &mut graphics::MeshBuilder) {
+    let x1 = x1.max(1.0).min(SCREEN_WIDTH as f64 - 1.0);
+    let x2 = x2.max(1.0).min(SCREEN_WIDTH as f64 - 1.0);
+    let dyb = b2 - b1;
+    let dyt = t2 - t1;
+    let mut dx = x2 - x1;
+    if dx < 1.0 {
+        dx = 1.0;
+    }
+    let xs = x1;
+    let mut x = x1;
+    while x < x2 {
+        let y1 = dyb * (x - xs + 0.5) / dx + b1;
+        let y2 = dyt * (x - xs + 0.5) / dx + t1;
+        let y1 = y1.max(1.0).min(SCREEN_HEIGHT as f64 - 1.0);
+        let y2 = y2.max(1.0).min(SCREEN_HEIGHT as f64 - 1.0);
+        let mut y = y1;
+        while y < y2 {
+            draw_pixel(x, y, 0, mb);
+            y += 1.0;
+        }
+        x += 1.0;
+    }
+}
+
 fn draw_pixel(x: f64, y: f64, c: usize, mb: &mut graphics::MeshBuilder) {
     let color = match c {
         0 => graphics::Color::from_rgb(255, 255, 0),
@@ -53,6 +78,21 @@ fn draw_pixel(x: f64, y: f64, c: usize, mb: &mut graphics::MeshBuilder) {
     );
 
     _ = mb.rectangle(DrawMode::fill(), rect, color);
+}
+
+fn to_screen_coords(x: i64, y: i64, z: i64, h_angle: i64, v_angle: i64) -> (f64, f64) {
+    let wx = x as f64 * COS[h_angle as usize] - 
+        y as f64 * SIN[h_angle as usize];
+
+    let wy = y as f64 * COS[h_angle as usize] +
+        x as f64 * SIN[h_angle as usize];
+
+    let wz = z as f64 + v_angle as f64 * wy / 32.0;
+
+    let sx = (wx * 200.0 / wy) + HALF_SCREEN_WIDTH as f64;
+    let sy = (wz * 200.0 / wy) + HALF_SCREEN_HEIGHT as f64;
+
+    (sx, sy)
 }
 
 impl event::EventHandler<ggez::GameError> for MainState {
@@ -110,38 +150,18 @@ impl event::EventHandler<ggez::GameError> for MainState {
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
         let mut canvas =
             graphics::Canvas::from_frame(ctx, graphics::Color::from([0.1, 0.2, 0.3, 1.0]));
-        let mut mb = &mut graphics::MeshBuilder::new();
+        let mut mb = graphics::MeshBuilder::new();
 
-        let x1 = 40 - self.player_x;
-        let y1 = 10 - self.player_y;
-
-        let x2 = 40 - self.player_x;
-        let y2 = 290 - self.player_y;
-
-        let wx1 = x1 as f64 * COS[self.player_h_angle as usize] - 
-            y1 as f64 * SIN[self.player_h_angle as usize];
-        let wx2 = x2 as f64 * COS[self.player_h_angle as usize] - 
-            y2 as f64 * SIN[self.player_h_angle as usize];
-
-        let wy1 = y1 as f64 * COS[self.player_h_angle as usize] +
-            x1 as f64 * SIN[self.player_h_angle as usize];
-        let wy2 = y2 as f64 * COS[self.player_h_angle as usize] +
-            x2 as f64 * SIN[self.player_h_angle as usize];
-
-        let wz1 = 0.0 - self.player_z as f64 + self.player_v_angle as f64 * wy1 / 32.0;
-        let wz2 = 0.0 - self.player_z as f64 + self.player_v_angle as f64 * wy1 / 32.0;
-
-        let sx1 = (wx1 * 200.0 / wy1) + HALF_SCREEN_WIDTH as f64;
-        let sy1 = (wz1 * 200.0 / wy1) + HALF_SCREEN_HEIGHT as f64;
-        let sx2 = (wx2 * 200.0 / wy2) + HALF_SCREEN_WIDTH as f64;
-        let sy2 = (wz2 * 200.0 / wy2) + HALF_SCREEN_HEIGHT as f64;
-        
-        if sx1 > 0.0 && sx1 < SCREEN_WIDTH as f64 && sy1 > 0.0 && sy1 < SCREEN_HEIGHT as f64 {
-            draw_pixel(sx1, sy1, 0, &mut mb);
-        }
-        if sx2 > 0.0 && sx2 < SCREEN_WIDTH as f64 && sy2 > 0.0 && sy2 < SCREEN_HEIGHT as f64 {
-            draw_pixel(sx2, sy2, 0, &mut mb);
-        }
+        let (sx1, sy1) = to_screen_coords(40 - self.player_x, 10 - self.player_y, 
+            0 - self.player_z, self.player_h_angle, self.player_v_angle);
+        let (sx2, sy2) = to_screen_coords(40 - self.player_x, 290 - self.player_y, 
+            0 - self.player_z, self.player_h_angle, self.player_v_angle);
+        let (_sx3, sy3) = to_screen_coords(40 - self.player_x, 10 - self.player_y, 
+            40 - self.player_z, self.player_h_angle, self.player_v_angle);
+        let (_sx4, sy4) = to_screen_coords(40 - self.player_x, 290 - self.player_y, 
+            40 - self.player_z, self.player_h_angle, self.player_v_angle);
+            
+        draw_wall(sx1, sx2, sy1, sy2, sy3, sy4, &mut mb);
 
         let mesh = mb.build();
         canvas.draw(&Mesh::from_data(ctx, mesh), DrawParam::new());
