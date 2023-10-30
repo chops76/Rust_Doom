@@ -32,6 +32,21 @@ impl MainState {
     }
 }
 
+fn clip_behind_player(x1: f64, y1: f64, z1: f64, x2: f64, y2: f64, z2: f64) -> (f64, f64, f64) {
+    let mut d = y1 as i64 - y2 as i64;
+    if d == 0 {
+        d = 1;
+    }
+    let s = y1 / (y1 - y2);
+    let x1_clipped = x1 + s * (x2 - x1);
+    let mut y1_clipped = y1 + s * (y2 - y1);
+    if y1_clipped == 0.0 {
+        y1_clipped = 1.0;
+    }
+    let z1_clipped = z1 + s * (z2 - z1);
+    (x1_clipped, y1_clipped, z1_clipped)
+}
+
 fn draw_wall(x1: f64, x2: f64, b1: f64, b2: f64, t1: f64, t2: f64, mb: &mut graphics::MeshBuilder) {
     let x1 = x1.max(1.0).min(SCREEN_WIDTH as f64 - 1.0);
     let x2 = x2.max(1.0).min(SCREEN_WIDTH as f64 - 1.0);
@@ -80,7 +95,7 @@ fn draw_pixel(x: f64, y: f64, c: usize, mb: &mut graphics::MeshBuilder) {
     _ = mb.rectangle(DrawMode::fill(), rect, color);
 }
 
-fn to_screen_coords(x: i64, y: i64, z: i64, h_angle: i64, v_angle: i64) -> (f64, f64) {
+fn to_world_coords(x: i64, y: i64, z: i64, h_angle: i64, v_angle: i64) -> (f64, f64, f64) {
     let wx = x as f64 * COS[h_angle as usize] - 
         y as f64 * SIN[h_angle as usize];
 
@@ -89,6 +104,10 @@ fn to_screen_coords(x: i64, y: i64, z: i64, h_angle: i64, v_angle: i64) -> (f64,
 
     let wz = z as f64 + v_angle as f64 * wy / 32.0;
 
+    (wx, wy, wz)
+}
+
+fn to_screen_coords(wx: f64, wy: f64, wz: f64) -> (f64, f64) {
     let sx = (wx * 200.0 / wy) + HALF_SCREEN_WIDTH as f64;
     let sy = (wz * 200.0 / wy) + HALF_SCREEN_HEIGHT as f64;
 
@@ -152,16 +171,33 @@ impl event::EventHandler<ggez::GameError> for MainState {
             graphics::Canvas::from_frame(ctx, graphics::Color::from([0.1, 0.2, 0.3, 1.0]));
         let mut mb = graphics::MeshBuilder::new();
 
-        let (sx1, sy1) = to_screen_coords(40 - self.player_x, 10 - self.player_y, 
+        let (mut wx1, mut wy1, mut wz1) = to_world_coords(40 - self.player_x, 10 - self.player_y, 
             0 - self.player_z, self.player_h_angle, self.player_v_angle);
-        let (sx2, sy2) = to_screen_coords(40 - self.player_x, 290 - self.player_y, 
+        let (mut wx2, mut wy2, mut wz2) = to_world_coords(40 - self.player_x, 290 - self.player_y, 
             0 - self.player_z, self.player_h_angle, self.player_v_angle);
-        let (_sx3, sy3) = to_screen_coords(40 - self.player_x, 10 - self.player_y, 
+        let (mut wx3, mut wy3, mut wz3) = to_world_coords(40 - self.player_x, 10 - self.player_y, 
             40 - self.player_z, self.player_h_angle, self.player_v_angle);
-        let (_sx4, sy4) = to_screen_coords(40 - self.player_x, 290 - self.player_y, 
+        let (mut wx4, mut wy4, mut wz4) = to_world_coords(40 - self.player_x, 290 - self.player_y, 
             40 - self.player_z, self.player_h_angle, self.player_v_angle);
+
+        if !(wy1 < 1.0 && wy2 < 1.0) {
+            if wy1 < 1.0 {
+                (wx1, wy1, wz1) = clip_behind_player(wx1, wy1, wz1, wx2, wy2, wz2);
+                (wx3, wy3, wz3) = clip_behind_player(wx3, wy3, wz3, wx4, wy4, wz4);
+            }
+
+            if wy2 < 1.0 {
+                (wx2, wy2, wz2) = clip_behind_player(wx2, wy2, wz2, wx1, wy1, wz1);
+                (wx4, wy4, wz4) = clip_behind_player(wx4, wy4, wz4, wx3, wy3, wz3);
+            }
+
+            let (sx1, sy1) = to_screen_coords(wx1, wy1, wz1);
+            let (sx2, sy2) = to_screen_coords(wx2, wy2, wz2);
+            let (sx3, sy3) = to_screen_coords(wx3, wy3, wz3);
+            let (sx4, sy4) = to_screen_coords(wx4, wy4, wz4);
             
-        draw_wall(sx1, sx2, sy1, sy2, sy3, sy4, &mut mb);
+            draw_wall(sx1, sx2, sy1, sy2, sy3, sy4, &mut mb);
+        }
 
         let mesh = mb.build();
         canvas.draw(&Mesh::from_data(ctx, mesh), DrawParam::new());
